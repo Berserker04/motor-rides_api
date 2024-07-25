@@ -9,7 +9,6 @@ use App\Http\Controllers\Controller;
 use App\Http\Resources\V1\NewsResource;
 use App\Http\Resources\V1\PositionResource;
 use App\Http\Resources\V1\ProductResource;
-use App\Models\News;
 use App\Models\Product;
 use Exception;
 use Illuminate\Database\QueryException;
@@ -62,9 +61,10 @@ class ProductController extends Controller
             $rules = [
                 'title' => 'required|string|max:100',
                 'description' => 'nullable|string',
+                'price' => 'nullable|numeric',
+                'subCategoryId' => 'required|numeric',
                 'image' => 'required|string',
                 'images' => 'nullable|array',
-                'videos' => 'nullable|array',
             ];
 
             $validator = ValidateController::validate($request, $rules);
@@ -73,36 +73,39 @@ class ProductController extends Controller
                 return ResponseController::error("No se pudo registrar, revise los datos", 400, $validator);
             }
 
-            $imageName = FilesController::saveFile($request->image, "images");
+            // $imageName = FilesController::saveFile($request->image, "images");
 
-            $news = News::create([
+            $news = Product::create([
                 'title' => $request->title,
                 'slug' => Str::slug($request->title),
                 'description' => $request->description,
-                'image' => $imageName,
+                'image' => $request->image,
                 'user_id' => Auth::user()->id,
+                'sub_category_id' => $request->subCategoryId,
+                'productState_id' => 1,
             ]);
 
-            if (isset($request->images)) {
-                FilesController::saveImages($request->images, $news->id);
-            }
+            // if (isset($request->images)) {
+            //     FilesController::saveImages($request->images, $news->id);
+            // }
 
-            if (isset($request->videos)) {
-                FilesController::saveVideos($request->videos, $news->id);
-            }
+            // if (isset($request->videos)) {
+            //     FilesController::saveVideos($request->videos, $news->id);
+            // }
 
             return ResponseController::success([
-                'news' => new NewsResource($news),
+                'products' => new ProductResource($news),
             ], "Registro éxitoso", 201);
+
         } catch (QueryException $e) {
             Log::error("Registrar noticia -> " . $e->getMessage());
             if ($e->getCode() === '23000') {
-                return ResponseController::error("Noticia ya registrada", 409);
+                return ResponseController::error("Producto ya registrado", 409);
             } else {
                 return ResponseController::error("Error al intentar registrar, revisa los datos", 400);
             }
         } catch (Exception $e) {
-            Log::error("Registrar noticia -> " . $e->getMessage());
+            Log::error("Error -> registrar producto -> " . $e->getMessage());
             return ResponseController::error();
         }
     }
@@ -113,14 +116,14 @@ class ProductController extends Controller
     public function show(string $id)
     {
         try {
-            $news = News::where(array("id" => $id))
+            $product = Product::where(array("id" => $id))
                 ->first();
 
-            if (!$news) {
+            if (!$product) {
                 return ResponseController::success("Noticia no encontrada");
             }
 
-            return ResponseController::success(new NewsResource($news));
+            return ResponseController::success(new ProductResource($product));
         } catch (Exception $e) {
             Log::error($e->getMessage());
             return ResponseController::error();
@@ -136,11 +139,11 @@ class ProductController extends Controller
             $request['id'] = $id;
             $request['newsState_id'] = $request->newsStateId;
             $rules = [
-                'id' => 'required|numeric|exists:news',
+                'id' => 'required|numeric|exists:products',
                 'title' => 'nullable|string',
                 'description' => 'nullable|string',
                 'image' => 'nullable|string',
-                'newsState_id' => 'nullable|numeric|exists:news_states,id',
+                // 'newsState_id' => 'nullable|numeric|exists:news_states,id',
             ];
 
             $validator = ValidateController::validate($request, $rules);
@@ -149,38 +152,41 @@ class ProductController extends Controller
                 return ResponseController::error("La noticia no se pudo actualizar", 400, $validator);
             }
 
-            $news = News::find($id);
+            $product = Product::find($id);
 
             if (isset($request->title)) {
-                $news->title = $request->title;
-                $news->slug = Str::slug($request->title);
+                $product->title = $request->title;
+                $product->slug = Str::slug($request->title);
             }
 
             if (isset($request->description)) {
-                $news->description = $request->description;
+                $product->description = $request->description;
+            }
+            if (isset($request->price)) {
+                $product->price = $request->price;
             }
 
-            if (isset($request->newsState_id)) {
-                $news->newsState_id = $request->newsState_id;
-            }
+            // if (isset($request->newsState_id)) {
+            //     $product->newsState_id = $request->newsState_id;
+            // }
 
-            if (isset($request->image)) {
-                $imageName = FilesController::saveFile($request->image, "images");
-                $news->image = $imageName;
-            }
+            // if (isset($request->image)) {
+            //     $imageName = FilesController::saveFile($request->image, "images");
+            //     $product->image = $imageName;
+            // }
 
-            $news->update();
+            $product->update();
 
-            return ResponseController::success(new NewsResource($news), "Cargo actualizado", 200);
+            return ResponseController::success(new ProductResource($product), "Producto actualizado", 200);
         } catch (QueryException $e) {
-            Log::error("Actualizar noticia -> " . $e->getMessage());
+            Log::error("Actualizar producto -> " . $e->getMessage());
             if ($e->getCode() === '23000') {
-                return ResponseController::error("Noticia ya registrada", 409);
+                return ResponseController::error("Producto ya registrad0o", 409);
             } else {
                 return ResponseController::error("Error al intentar actualizar, revisa los datos", 400);
             }
         } catch (Exception $e) {
-            Log::error("Registrar noticia -> " . $e->getMessage());
+            Log::error("Registrar producto -> " . $e->getMessage());
             return ResponseController::error();
         }
     }
@@ -191,20 +197,20 @@ class ProductController extends Controller
     public function destroy(string $id)
     {
         try {
-            $news = News::find($id);
+            $produt = Product::find($id);
 
-            if (!$news || $news->newsState_id == 2) { // eliminado
-                return ResponseController::success(null, "Noticia no encontrada");
+            if (!$produt || $produt->productState_id == 2) { // eliminado
+                return ResponseController::success(null, "Producto no encontrado");
             }
 
-            $news->newsState_id = 2;
-            $news->save();
+            $produt->productState_id = 2;
+            $produt->save();
 
-            $message = "Noticia eliminada";
+            $message = "Producto eliminado";
             Log::info($message);
-            return ResponseController::success(new NewsResource($news), $message);
+            return ResponseController::success(new ProductResource($produt), $message);
         } catch (Exception $e) {
-            Log::error("Eliminar noticia -> " . $e->getMessage());
+            Log::error("Eliminar producto -> " . $e->getMessage());
             return ResponseController::error();
         }
     }
